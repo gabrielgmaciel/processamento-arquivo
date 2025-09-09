@@ -12,6 +12,7 @@ async def processar_arquivo(file: UploadFile = File(...)):
     import pandas as pd
     import io
 
+    # --- Salvar arquivo recebido ---
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
@@ -27,6 +28,8 @@ async def processar_arquivo(file: UploadFile = File(...)):
     linhas = markdown.splitlines()
 
     resposta_dict = {}
+
+    # --- Parser de chave:valor (com suporte a valor na linha seguinte) ---
     i = 0
     while i < len(linhas):
         linha = linhas[i].strip()
@@ -37,22 +40,37 @@ async def processar_arquivo(file: UploadFile = File(...)):
             valor = valor.strip()
 
             if valor:
-                # Caso normal: chave e valor na mesma linha
                 resposta_dict[chave] = valor
             else:
-                # Caso especial: valor na(s) próxima(s) linha(s)
+                # pega a próxima linha não vazia
                 j = i + 1
                 while j < len(linhas) and not linhas[j].strip():
-                    j += 1  # pula linhas em branco
+                    j += 1
                 if j < len(linhas):
                     resposta_dict[chave] = linhas[j].strip()
                     i = j  # pula a linha já usada
 
         i += 1
 
-    # ------------------------
-    # Extrair tabelas
-    # ------------------------
+    # --- Função auxiliar para parsear tabelas markdown ---
+    def parse_markdown_table(tabela_md: str):
+        linhas_tbl = [
+            l for l in tabela_md.splitlines()
+            if not set(l.strip()) <= {"|", "-", " "}
+        ]
+        if not linhas_tbl:
+            return []
+        tabela_md_limpa = "\n".join(linhas_tbl)
+        try:
+            df = pd.read_csv(io.StringIO(tabela_md_limpa), sep="|").dropna(axis=1, how="all")
+            df = df.rename(columns=lambda c: c.strip())
+            df = df.applymap(lambda x: str(x).strip())
+            return df.to_dict(orient="records")
+        except Exception as e:
+            print("Erro parse tabela:", e)
+            return []
+
+    # --- Detectar tabelas ---
     tabelas = []
     buffer = []
     dentro_tabela = False
@@ -64,13 +82,9 @@ async def processar_arquivo(file: UploadFile = File(...)):
         else:
             if dentro_tabela:
                 tabela_md = "\n".join(buffer)
-                try:
-                    df = pd.read_csv(io.StringIO(tabela_md), sep="|").dropna(axis=1, how="all")
-                    df = df.rename(columns=lambda c: c.strip())
-                    df = df[~df[df.columns[0]].str.contains("-+", regex=True)]
-                    tabelas.append(df.to_dict(orient="records"))
-                except Exception as e:
-                    print("Erro parse tabela:", e)
+                parsed = parse_markdown_table(tabela_md)
+                if parsed:
+                    tabelas.append(parsed)
                 buffer = []
                 dentro_tabela = False
 
@@ -78,3 +92,4 @@ async def processar_arquivo(file: UploadFile = File(...)):
         resposta_dict["Tabelas"] = tabelas
 
     return resposta_dict
+

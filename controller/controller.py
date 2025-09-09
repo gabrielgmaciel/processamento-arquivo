@@ -1,10 +1,20 @@
-import ctypes
-
 from docling.document_converter import DocumentConverter
 from fastapi import APIRouter, File, UploadFile
-import tempfile
 
 controller_router = APIRouter(prefix="/arquivo")
+
+import requests
+from huggingface_hub import configure_http_backend
+
+def backend_factory() -> requests.Session:
+    session = requests.Session()
+    session.verify = False
+    return session
+
+configure_http_backend(backend_factory=backend_factory)
+
+import urllib.request
+urllib.request.urlopen("https://www.google.com")
 
 @controller_router.post("/teste")
 async def processar_arquivo(file: UploadFile = File(...)):
@@ -22,6 +32,9 @@ async def processar_arquivo(file: UploadFile = File(...)):
         text = converter.convert(tmp_path)
     except Exception as e:
         return {"erro": str(e)}
+
+    with open("arquivo.txt", "w", encoding="utf-8") as f:
+        f.write(text.document.export_to_markdown())
 
     # Exportar markdown
     markdown = text.document.export_to_markdown()

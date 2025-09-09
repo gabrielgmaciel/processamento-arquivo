@@ -27,20 +27,31 @@ async def processar_arquivo(file: UploadFile = File(...)):
     linhas = markdown.splitlines()
 
     resposta_dict = {}
+    i = 0
+    while i < len(linhas):
+        linha = linhas[i].strip()
 
-    # ------------------------
-    # Extrair chave:valor
-    # ------------------------
-    for linha in linhas:
-        if ":" in linha and not linha.strip().startswith("|"):
+        if ":" in linha and not linha.startswith("|"):
             chave, valor = linha.split(":", 1)
             chave = chave.strip()
             valor = valor.strip()
-            if chave and valor:
+
+            if valor:
+                # Caso normal: chave e valor na mesma linha
                 resposta_dict[chave] = valor
+            else:
+                # Caso especial: valor na(s) próxima(s) linha(s)
+                j = i + 1
+                while j < len(linhas) and not linhas[j].strip():
+                    j += 1  # pula linhas em branco
+                if j < len(linhas):
+                    resposta_dict[chave] = linhas[j].strip()
+                    i = j  # pula a linha já usada
+
+        i += 1
 
     # ------------------------
-    # Extrair tabelas (markdown -> DataFrame -> JSON)
+    # Extrair tabelas
     # ------------------------
     tabelas = []
     buffer = []
@@ -52,13 +63,10 @@ async def processar_arquivo(file: UploadFile = File(...)):
             buffer.append(linha)
         else:
             if dentro_tabela:
-                # fim da tabela
                 tabela_md = "\n".join(buffer)
                 try:
                     df = pd.read_csv(io.StringIO(tabela_md), sep="|").dropna(axis=1, how="all")
-                    # limpar colunas
                     df = df.rename(columns=lambda c: c.strip())
-                    # remover linhas inúteis (---- separador)
                     df = df[~df[df.columns[0]].str.contains("-+", regex=True)]
                     tabelas.append(df.to_dict(orient="records"))
                 except Exception as e:

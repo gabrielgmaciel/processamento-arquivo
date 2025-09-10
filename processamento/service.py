@@ -24,8 +24,8 @@ async def processar_arquivo(file: UploadFile = File(...)):
         tmp.write(await file.read())
         tmp_path = tmp.name
 
-    converter = DocumentConverter()
     try:
+        converter = DocumentConverter()
         text = converter.convert(tmp_path)
         markdown_content = text.document.export_to_markdown()
     except Exception as e:

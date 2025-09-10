@@ -1,4 +1,7 @@
+import tempfile
+
 import requests
+import io
 
 from docling.document_converter import DocumentConverter
 from fastapi import APIRouter, File, UploadFile
@@ -14,12 +17,9 @@ def backend_factory() -> requests.Session:
 
 configure_http_backend(backend_factory=backend_factory)
 
-@service_router.post("/teste")
+@service_router.post("/converter")
 async def processar_arquivo(file: UploadFile = File(...)):
-    import tempfile
-    import io
 
-    # --- Salvar arquivo recebido ---
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
@@ -27,14 +27,12 @@ async def processar_arquivo(file: UploadFile = File(...)):
     converter = DocumentConverter()
     try:
         text = converter.convert(tmp_path)
+        markdown_content = text.document.export_to_markdown()
     except Exception as e:
         return {"erro": str(e)}
 
-    markdown_content = text.document.export_to_markdown()
-    file_like = io.StringIO(markdown_content)
-
     return StreamingResponse(
-        file_like,
+        io.StringIO(markdown_content),
         media_type="text/markdown",
         headers={
             "Content-Disposition": 'attachment; filename="arquivo_convertido.txt"'
